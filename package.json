@@ -7,7 +7,7 @@
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0",
-    "test": "node --test tests/engine.test.js",
+    "test": "node --test tests/*.test.js",
     "test:e2e": "playwright test",
     "verify:assets": "node scripts/verify-assets.mjs",
     "build:pages": "vite build --base=/The-King-the-presos-/"

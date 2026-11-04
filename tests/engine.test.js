@@ -98,7 +98,7 @@ test('pause freezes combat and the timer; large or invalid deltas cannot skip si
   const match = createMatch({ ai: false });
   stepMatch(match, 5, { right: true });
   assert.equal(match.timeLeft, 44.95);
-  assert.equal(match.fighters.player.x, 296.5);
+  assert.ok(Math.abs(match.fighters.player.x - 296.5) < 1e-9, 'three fixed ticks preserve the 50 ms movement distance');
   setPaused(match);
   const frozen = JSON.stringify(match);
   stepMatch(match, 0.05, { special: true, jump: true });

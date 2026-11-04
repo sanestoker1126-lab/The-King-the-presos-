@@ -3,3 +3,14 @@
 /* Local fonts keep the arcade title and fighter names consistent on every machine. */
 .primary-button>span{display:none}.primary-button::after,.brand-mark>span,.orange-marker{content:"";display:inline-block;width:12px;height:12px;flex:none;border-top:2px solid currentColor;border-right:2px solid currentColor;background:linear-gradient(135deg,transparent 43%,currentColor 44% 55%,transparent 56%)}.brand-mark>span{width:7px;height:7px;border-width:1px}.orange-marker{width:8px;height:8px;border-width:1px}.brand-mark,.brand-name,.caption-title,.fighter-name,.section-heading h2,.arena-message h2,.controls-intro h2,.footer-brand,.hud-name,.timer,.stats-value{font-weight:800}.fighter-description{gap:4px}.fighter-name{min-width:0}.fighter-card:disabled{opacity:.7;cursor:default}
 @media(min-width:361px) and (max-width:520px){.touch-controls button{min-width:44px;height:44px}.action-controls button{width:48px}}
+
+.fighter-route{display:block;padding:0 12px 11px;background:#1d231b;color:#c2d1b6;font:11px ui-monospace,monospace;letter-spacing:.5px}
+.cancel-guide{padding:14px 18px;border-top:1px solid #3e483a;background:#192017}
+.cancel-guide>div{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.cancel-guide>div>span{font-size:9px;letter-spacing:1px;color:#a3b194}
+.cancel-guide strong{font:700 16px ui-monospace,monospace;color:#f0e8d3}
+.cancel-guide p{margin:8px 0;color:#c4cfba;font-size:11px;line-height:1.5;min-height:1.5em}
+.cancel-guide p.ready{color:#ffd09a}
+.cancel-note{display:block;color:#96a58b;font-size:10px;line-height:1.6}
+.touch-controls button.cancel-ready{outline:2px solid #ffd09a;outline-offset:3px;box-shadow:0 0 14px #ffb46b44}
+@media(max-width:520px){.cancel-guide{padding:12px}.cancel-guide strong{font-size:14px}.fighter-route{padding-left:10px;padding-right:10px;font-size:10px}.cancel-note{font-size:9px}}

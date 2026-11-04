@@ -7,7 +7,7 @@ test.beforeEach(async ({ page }, testInfo) => {
   page.on('requestfailed', request => failures.push(`${request.url()}: ${request.failure()?.errorText}`));
   page.on('response', response => { if (response.status() >= 400) failures.push(`${response.status()} ${response.url()}`); });
   page.runtimeFailures = failures;
-  if (testInfo.title.includes('complete rounds') || testInfo.title.includes('brief inputs')) {
+  if (testInfo.title.includes('complete rounds') || testInfo.title.includes('brief inputs') || testInfo.title.includes('cancel chain')) {
     const virtualStart = new Date('2026-10-06T12:00:00Z');
     await page.clock.install({ time: virtualStart });
     await page.clock.pauseAt(new Date(virtualStart.getTime() + 500));
@@ -291,4 +291,52 @@ test('enabling sound plays and decodes the supplied Ogg audio', async ({ page })
   await page.getByRole('button', { name: 'Desactivar sonido', exact: true }).click();
   await expect(page.locator('#sound-toggle')).toHaveAttribute('aria-pressed', 'false');
   expect(await page.evaluate(() => window.observedGameMedia.every(audio => audio.paused))).toBe(true);
+});
+
+test('each fighter presents its own cancel route before the match', async ({ page }) => {
+  const routes = { mateo: 'J → K → L', tobi: 'J → J → L', nadia: 'K → J → L', semillas: 'K → K → J', oscuro: 'K → L', callejero: 'J → L → K' };
+  for (const [id, route] of Object.entries(routes)) {
+    await page.locator(`[data-fighter="${id}"]`).click();
+    await expect(page.locator('#cancel-route')).toHaveText(route);
+    await expect(page.locator(`[data-fighter="${id}"] .fighter-route`)).toHaveText(route);
+  }
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+test('cancel chain follows clean hits with keyboard or touch and spends energy', async ({ page }, testInfo) => {
+  // A passive, deterministic CPU still moves normally; its attacks/guard use a
+  // high random sample. Combat and inputs remain those of the actual application.
+  await page.evaluate(() => { Math.random = () => 0.99; });
+  await beginMatch(page);
+  await page.keyboard.down('d');
+  await page.clock.runFor(900);
+  await page.keyboard.up('d');
+  const strike = async control => {
+    if (testInfo.project.name === 'mobile') await page.locator(`[data-control="${control}"]`).tap();
+    else await page.keyboard.press({ punch: 'j', special: 'l' }[control]);
+  };
+  const waitForWindow = async key => {
+    for (let frame = 0; frame < 20; frame++) {
+      if ((await page.locator('#cancel-status').textContent()).includes(`Pulsa ${key}`)) return;
+      await page.clock.runFor(16);
+    }
+    await expect(page.locator('#cancel-status')).toContainText(`Pulsa ${key}`);
+  };
+  await strike('punch');
+  await waitForWindow('J');
+  await expect(page.locator('#opponent-health-text')).toHaveText('91 HP');
+  await expect(page.locator('#cancel-status')).toContainText('Pulsa J');
+  await expect(page.locator('[data-control="punch"]')).toHaveClass(/cancel-ready/);
+  await strike('punch');
+  await waitForWindow('L');
+  await expect(page.locator('#opponent-health-text')).toHaveText('82 HP');
+  await expect(page.locator('#cancel-status')).toContainText('Pulsa L');
+  await expect(page.locator('[data-control="special"]')).toHaveClass(/cancel-ready/);
+  const energy = page.getByRole('meter', { name: 'Energía de tu luchador', exact: true });
+  const beforeSpecial = Number(await energy.getAttribute('aria-valuenow'));
+  await strike('special');
+  await page.clock.runFor(100);
+  await expect(page.locator('#opponent-health-text')).toHaveText('58 HP');
+  expect(Number(await energy.getAttribute('aria-valuenow'))).toBeLessThan(beforeSpecial - 30);
+  await expect(page.locator('#cancel-status')).toContainText('Final de cadena');
 });

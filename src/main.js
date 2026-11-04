@@ -3,7 +3,9 @@ import '@fontsource/dm-sans/latin-400.css';
 import '@fontsource/dm-sans/latin-500.css';
 import '@fontsource/dm-sans/latin-700.css';
 import './style.css';
-import { createMatch, stepMatch, startNextRound, setPaused, ARENA } from './engine.js';
+import { createMatch, stepMatch, startNextRound, setPaused, getCancelState, getAttackDefinition, ATTACKS, ARENA } from './engine.js';
+import { getFighterProfile, formatCancelRoute, ATTACK_KEYS } from './fighter-profiles.js';
+import { resolveAnimationFrame } from './animation.js';
 
 const $ = id => document.getElementById(id);
 const canvas = $('game-canvas');
@@ -61,7 +63,11 @@ function buildSelection() {
     const description = document.createElement('div'); description.className = 'fighter-description';
     const name = document.createElement('span'); name.className = 'fighter-name'; name.textContent = fighter.name.toUpperCase();
     const hint = document.createElement('span'); hint.textContent = fighter.id === selectedFighter ? 'ELEGIDO' : '+';
-    description.append(name, hint); button.append(portrait, description);
+    description.append(name, hint);
+    const route = document.createElement('span'); route.className = 'fighter-route';
+    route.id = `route-${fighter.id}`; route.textContent = formatCancelRoute(fighter.id);
+    button.setAttribute('aria-describedby', route.id);
+    button.append(portrait, description, route);
     const bounds = fighter.portrait.alphaBounds;
     const scale = Math.min(150 / bounds.height, 160 / bounds.width);
     const ctx = imageCanvas.getContext('2d');
@@ -92,6 +98,7 @@ function selectFighter(id) {
     button.querySelector('.fighter-description>span:last-child').textContent = selected ? 'ELEGIDO' : '+';
   });
   $('selected-label').textContent = `${fighterById(id).name.toUpperCase()} · LISTO PARA EL SIGUIENTE ROUND`;
+  updateCancelGuide();
   announce(`${fighterById(id).name} seleccionado`);
 }
 function selectStage(id) {
@@ -106,12 +113,40 @@ function lockSelection(locked) {
   document.querySelectorAll('[data-fighter],[data-stage]').forEach(button => button.disabled = locked);
   $('difficulty').disabled = locked;
 }
+
+function updateCancelGuide() {
+  const current = match?.fighters.player;
+  const id = current?.id || selectedFighter;
+  const profile = getFighterProfile(id);
+  $('cancel-fighter').textContent = `CADENA DE ${profile?.name.toUpperCase() || id.toUpperCase()}`;
+  $('cancel-route').textContent = formatCancelRoute(id);
+  const status = current ? getCancelState(current) : null;
+  const playing = match?.status === 'playing' && !match.paused;
+  let message = profile?.style || 'Sin cadena de cancelación';
+  let ready = false;
+  if (current && match.paused) message = 'En pausa';
+  else if (current && match.status !== 'playing') message = 'Round terminado · vuelve a intentar tu cadena en la próxima pelea.';
+  else if (playing && status?.next && status.confirmed) {
+    const cost = ATTACKS[status.next].energy + profile.cancel.cost;
+    if (status.sinceHitTicks > profile.cancel.close) message = 'Ventana cerrada · deja terminar la recuperación y vuelve a empezar.';
+    else if (current.energy < cost) message = `Necesitas ${cost} de energía para enlazar ${ATTACK_KEYS[status.next]}.`;
+    else if (status.next === 'special' && current.specialCooldown > 0) message = 'El especial todavía se está recuperando.';
+    else if (status.open) { message = `¡Impacto confirmado! Pulsa ${ATTACK_KEYS[status.next]} para cancelar.`; ready = true; }
+    else message = 'Espera tu ventana de enlace y vuelve a pulsar.';
+  } else if (playing && current._attack?.chainIndex > 0) message = 'Final de cadena · deja terminar la recuperación.';
+  else if (playing) message = `Acércate, empieza con ${ATTACK_KEYS[profile?.route[0]] || 'J'} y confirma el impacto.`;
+  $('cancel-status').textContent = message;
+  $('cancel-status').classList.toggle('ready', ready);
+  for (const button of document.querySelectorAll('[data-control]')) {
+    button.classList.toggle('cancel-ready', ready && button.dataset.control === status?.next);
+  }
+}
 function clearInput() {
   keyboard.clear(); touch.clear(); queuedPresses.clear();
   document.querySelectorAll('[data-control]').forEach(button => button.classList.remove('pressed'));
 }
 function getInput() {
-  const input = {};
+  const input = { presses: [...queuedPresses] };
   for (const code of keyboard) input[keyMap[code]] = true;
   for (const control of touch.values()) input[control] = true;
   for (const control of queuedPresses) input[control] = true;
@@ -156,6 +191,7 @@ function pauseGame() {
   if (!match || match.status !== 'playing') return;
   if (match.paused) { resumeGame(); return; }
   setPaused(match, true); clearInput(); $('arena-state').textContent = 'PARTIDA EN PAUSA';
+  updateCancelGuide();
   showMessage('TÓMATE UN RESPIRO', 'PAUSA', 'El patio puede esperar un momento.', 'CONTINUAR', resumeGame);
 }
 function resumeGame() {
@@ -197,6 +233,7 @@ function updateHud() {
   $('timer').textContent = String(Math.ceil(match.timeLeft)).padStart(2, '0');
   $('round-label').textContent = `ROUND ${match.round} · ${match.fighters.player.wins} — ${match.fighters.opponent.wins}`;
   $('arena-state').textContent = match.paused ? 'PARTIDA EN PAUSA' : match.status === 'playing' ? 'EN COMBATE' : match.status === 'finished' ? 'PARTIDA COMPLETADA' : 'ROUND COMPLETADO';
+  updateCancelGuide();
 }
 
 function playSound(id, volume = 0.35) {
@@ -226,10 +263,10 @@ $('sound-toggle').addEventListener('click', () => {
 function renderFighter(fighter, time, preview = false) {
   const info = fighterById(fighter.id);
   const image = textures.get(info.path);
-  const action = fighter.action === 'hit' ? 'hurt' : fighter.action === 'special' ? 'punch' : fighter.action;
-  const animation = info.animations[action] || info.animations.idle;
-  const frame = Math.floor((reducedMotion && preview ? 0 : time) * (action === 'idle' ? 7 : 15)) % animation.frames;
-  const column = animation.startColumn + frame;
+  const { animation, column } = resolveAnimationFrame(info, fighter, {
+    preview, previewTime: time, reducedMotion,
+    duration: getAttackDefinition(fighter)?.duration || fighter.actionDuration,
+  });
   const scale = info.frameHeight === 120 ? 1.92 : 1.72;
   const width = info.frameWidth * scale;
   const height = info.frameHeight * scale;
@@ -257,6 +294,7 @@ function handleEvents() {
     } else if (event.type === 'punch') playSound('punchLight', 0.25);
     else if (event.type === 'kick') playSound('kickLight', 0.3);
     else if (event.type === 'special') playSound('special', 0.3);
+    else if (event.type === 'cancel') announce(`Cancelación: ${ATTACK_KEYS[event.from] || ''} a ${ATTACK_KEYS[event.to] || ''}.`);
   }
 }
 function render(dt) {
@@ -266,7 +304,7 @@ function render(dt) {
   context.fillStyle = '#0c140f24'; context.fillRect(0, 0, ARENA.width, ARENA.height);
   if (match) {
     renderFighter(match.fighters.player, elapsed);
-    renderFighter(match.fighters.opponent, elapsed + 0.2);
+    renderFighter(match.fighters.opponent, elapsed);
   } else {
     const opponent = catalog.fighters.find(fighter => fighter.id !== selectedFighter && fighter.id === 'mateo') || catalog.fighters.find(fighter => fighter.id !== selectedFighter);
     renderFighter({ id: selectedFighter, x: 580, y: 0, facing: 1, action: 'idle' }, elapsed, true);
