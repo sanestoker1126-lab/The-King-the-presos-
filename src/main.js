@@ -381,8 +381,20 @@ async function init() {
     buildSelection(); $('loading-message').hidden = true; $('play-button').disabled = false;
     $('arena-state').textContent = 'EL PATIO TE ESPERA'; requestAnimationFrame(frame);
   } catch (error) {
-    $('loading-message').textContent = 'No pudimos cargar el patio. Recarga la página para intentarlo de nuevo.';
-    announce('Error al cargar los recursos del juego.'); console.error(error);
+    const loading = $('loading-message');
+    loading.replaceChildren();
+    loading.hidden = false;
+    loading.style.cssText = 'display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:20px;text-align:center;';
+    const reason = document.createElement('span');
+    reason.textContent = 'No se pudo iniciar el juego. ' + (error?.message || 'Error al cargar recursos.');
+    const retry = document.createElement('button');
+    retry.textContent = 'REINTENTAR CARGA';
+    retry.style.cssText = 'padding:12px 20px;border:0;border-radius:4px;background:#ff7847;color:#182018;font-weight:bold;';
+    retry.addEventListener('click', () => location.reload());
+    loading.append(reason, retry);
+    $('arena-state').textContent = 'ERROR DE INICIO';
+    announce('Error al cargar los recursos del juego. Reintentar disponible.');
+    console.error('[Legend of Presos] Error al iniciar:', error);
   }
 }
 init();
