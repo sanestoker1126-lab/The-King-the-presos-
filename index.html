@@ -72,6 +72,28 @@
       </main>
       <footer><span class="footer-brand">PUENTE GRANDE<span>ARCADE CLUB</span></span><p>Un patio. Muchas historias. Tu siguiente pelea.</p><span class="footer-version">PROTOTIPO JUGABLE · V.01</span></footer>
     </div>
+    <script>
+      // Opening the uncompiled repository index with file:// cannot load Vite modules.
+      // Show an actionable error instead of leaving an unresponsive white screen.
+      document.addEventListener('DOMContentLoaded', () => {
+        if (location.protocol !== 'file:') return;
+        const notice = document.createElement('div');
+        notice.setAttribute('role', 'alert');
+        notice.style.cssText = 'position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:28px;text-align:center;background:#101510;color:#f4f0e4;font:16px Arial,sans-serif;';
+        const heading = document.createElement('h2');
+        heading.style.cssText = 'font-size:28px;margin:0;color:#ff8656;';
+        heading.textContent = 'EL JUEGO NECESITA INICIARSE DESDE EL PAQUETE COMPILADO';
+        const details = document.createElement('p');
+        details.style.cssText = 'max-width:640px;line-height:1.7;margin:0;';
+        details.textContent = 'Este index.html es código fuente, no el juego instalable. Descarga el ZIP de Releases, extráelo y ejecuta JUGAR_EN_WINDOWS.cmd. No requiere Node.js.';
+        const action = document.createElement('a');
+        action.href = 'https://github.com/sanestoker1126-lab/The-King-the-presos-/releases';
+        action.textContent = 'DESCARGAR JUEGO LISTO PARA WINDOWS';
+        action.style.cssText = 'display:inline-block;padding:15px 20px;background:#ff8656;color:#111;text-decoration:none;font-weight:bold;border-radius:5px;';
+        notice.append(heading, details, action);
+        document.body.append(notice);
+      });
+    </script>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>
