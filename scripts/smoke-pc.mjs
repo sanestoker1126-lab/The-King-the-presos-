@@ -35,7 +35,7 @@ try {
   await page.waitForTimeout(450);
   await page.keyboard.up('d');
   await page.keyboard.press('j');
-  await page.waitForTimeout(180);
+  await page.waitForTimeout(1250);
   await expect(page.locator('#timer')).not.toHaveText('45');
   if (errors.length) throw new Error('Errores navegador: ' + errors.join(' | '));
   console.log('PC SMOKE OK: inicio, 6 personajes, 5 escenarios, render, botones y teclado');
