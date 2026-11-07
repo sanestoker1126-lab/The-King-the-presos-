@@ -1,4 +1,4 @@
-name: Juego compilado para Windows
+name: Legend of Presos PC Windows - Juego ejecutable
 
 on:
   push:
@@ -9,9 +9,8 @@ on:
       - "public/**"
       - "package.json"
       - "package-lock.json"
-      - "scripts/serve-offline.ps1"
-      - "JUGAR_EN_WINDOWS.cmd"
-      - "README-JUGAR.md"
+      - "launcher/**"
+      - "scripts/smoke-pc.mjs"
       - ".github/workflows/portable.yml"
   workflow_dispatch:
 
@@ -19,46 +18,104 @@ permissions:
   contents: write
 
 jobs:
-  package:
-    runs-on: ubuntu-latest
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
     steps:
-      - name: Obtener codigo
+      - name: Descargar proyecto
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-      - name: Preparar Node.js
+      - name: Preparar Node
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "24"
           cache: npm
+      - name: Preparar .NET
+        uses: actions/setup-dotnet@d6a06cfc7742a0a560a3b7c25a0ea0db167f90b9 # v4
+        with:
+          dotnet-version: "8.0.x"
       - name: Instalar dependencias
         run: npm ci --no-audit --no-fund
-      - name: Comprobar recursos y motor
+      - name: Verificar juego original
         run: |
           npm run verify:assets
           npm test
-      - name: Compilar para servidor local
+      - name: Compilar web para el ejecutable
         run: npx vite build --base=./ --outDir=dist-portable
-      - name: Empaquetar juego jugable
+      - name: Compilar lanzador PC x64 (autonomo)
         run: |
-          cp scripts/serve-offline.ps1 dist-portable/servidor.ps1
-          cp JUGAR_EN_WINDOWS.cmd dist-portable/JUGAR_EN_WINDOWS.cmd
-          cp README-JUGAR.md dist-portable/LEEME.txt
-          cd dist-portable
-          zip -q -r ../Legend_of_Presos_JUGAR_Windows.zip .
-          cd ..
-          unzip -t Legend_of_Presos_JUGAR_Windows.zip | tail -n 1
-          test -s Legend_of_Presos_JUGAR_Windows.zip
-      - name: Publicar paquete descargable
+          dotnet publish launcher/LegendOfPresos.Windows.csproj --configuration Release --runtime win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -o build/launcher
+      - name: Preparar carpetas
+        run: |
+          New-Item -ItemType Directory -Force build/pc/game | Out-Null
+          Copy-Item -Path 'dist-portable/*' -Destination 'build/pc/game' -Recurse -Force
+          Copy-Item -Path 'build/launcher/JUGAR_LEGEND_OF_PRESOS.exe' -Destination 'build/pc/JUGAR_LEGEND_OF_PRESOS.exe' -Force
+          if (-not (Test-Path 'build/pc/game/assets/catalog.json')) { throw 'Catalogo ausente en el paquete' }
+          if (-not (Test-Path 'build/pc/game/index.html')) { throw 'Index ausente en el paquete' }
+      - name: Instalar Chromium para comprobar Windows
+        run: npx playwright install chromium
+      - name: Prueba REAL del ejecutable, recursos y controles de teclado
+        run: |
+          $exe = (Resolve-Path 'build/pc/JUGAR_LEGEND_OF_PRESOS.exe').Path
+          $out = Join-Path $PWD 'windows-game-out.log'
+          $err = Join-Path $PWD 'windows-game-err.log'
+          $process = Start-Process -FilePath $exe -ArgumentList '--port 8765 --no-browser' -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
+          try {
+            $running = $false
+            for ($i = 0; $i -lt 60; $i++) {
+              Start-Sleep -Milliseconds 400
+              if ($process.HasExited) { throw "El ejecutable cerro prematuramente. $(Get-Content $err -Raw)" }
+              try {
+                $response = Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:8765/health' -TimeoutSec 2
+                if ($response.StatusCode -eq 200) { $running = $true; break }
+              } catch {}
+            }
+            if (-not $running) { throw "El servidor local no arranco. $(Get-Content $err -Raw)" }
+            node scripts/smoke-pc.mjs
+            if ($LASTEXITCODE -ne 0) { throw 'No paso la prueba de navegador Windows' }
+          } finally {
+            if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force }
+            if (Test-Path $out) { Get-Content $out }
+            if (Test-Path $err) { Get-Content $err }
+          }
+      - name: Comprimir version jugable PC
+        run: |
+          @'
+          LEGEN(D) OF PRESOS - JUGAR EN WINDOWS 10 / 11 (64 BITS)
+          --------------------------------------------------------
+          1. Extrae TODOS los archivos del ZIP en una carpeta.
+          2. Doble clic en JUGAR_LEGEND_OF_PRESOS.exe
+          3. Abre el navegador automaticamente con el juego.
+          4. No cierres la ventana mientras juegas.
+
+          NO requiere instalar Node.js, PowerShell ni Vite.
+          Requiere navegador instalado: Edge, Chrome o Firefox.
+          El juego solo abre un servidor local (127.0.0.1), no se comparte en Internet.
+
+          TECLADO:
+          A / D o flechas: caminar.
+          W o flecha arriba: saltar.
+          S o flecha abajo: defender.
+          J: golpe. K: patada. L: especial.
+          Esc: pausa.
+
+          Si Windows muestra SmartScreen, revisa que descargaste el ZIP
+          desde el repositorio oficial del proyecto antes de ejecutar.
+          '@ | Set-Content -Path build/pc/LEEME-WINDOWS.txt -Encoding UTF8
+          Compress-Archive -Path 'build/pc/*' -DestinationPath 'Legend_of_Presos_PC_Windows_x64.zip' -CompressionLevel Optimal -Force
+          if (-not (Test-Path 'Legend_of_Presos_PC_Windows_x64.zip')) { throw 'ZIP no generado' }
+      - name: Guardar version PC
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: Legend_of_Presos_JUGAR_Windows
-          path: Legend_of_Presos_JUGAR_Windows.zip
+          name: Legend_of_Presos_PC_Windows_x64
+          path: Legend_of_Presos_PC_Windows_x64.zip
           if-no-files-found: error
-      - name: Publicar en Releases
+      - name: Publicar descarga PC comprobada
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          SHORT_SHA=$(echo "$GITHUB_SHA" | cut -c1-7)
-          gh release create "inicio-corregido-$SHORT_SHA" \
-            Legend_of_Presos_JUGAR_Windows.zip \
-            --title "Legend of Presos - inicio corregido $SHORT_SHA" \
-            --notes "Juego compilado para Windows. Extraer ZIP y ejecutar JUGAR_EN_WINDOWS.cmd. No necesita Node ni Python."
+          $short = $env:GITHUB_SHA.Substring(0,7)
+          gh release create "pc-verificado-$short" "Legend_of_Presos_PC_Windows_x64.zip" --title "Legend of Presos - Windows x64 jugable ($short)" --notes "Incluye JUGAR_LEGEND_OF_PRESOS.exe, navegador local sin instalaciones y archivos del juego. Arranque, render y teclado probados en Windows CI."
+          if ($LASTEXITCODE -ne 0) { throw 'No se pudo publicar el ZIP en Releases' }
