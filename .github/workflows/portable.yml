@@ -33,7 +33,7 @@ jobs:
           node-version: "24"
           cache: npm
       - name: Preparar .NET
-        uses: actions/setup-dotnet@d6a06cfc7742a0a560a3b7c25a0ea0db167f90b9 # v4
+        uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "8.0.x"
       - name: Instalar dependencias
